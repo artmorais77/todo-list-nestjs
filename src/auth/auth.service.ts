@@ -1,11 +1,15 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { SignInDto, SignUpDto } from './dto/auth.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { hash } from 'bcrypt';
+import { hash, compare } from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
   async signUp(body: SignUpDto) {
     const userExist = await this.prisma.user.findMany({
       where: { email: body.email },
@@ -28,7 +32,24 @@ export class AuthService {
     });
   }
 
-  signIn(body: SignInDto) {
-    console.log(body);
+  async signIn(body: SignInDto) {
+    const userExist = await this.prisma.user.findMany({
+      where: { email: body.email },
+    });
+
+    const passwordIsCorrect = await compare(
+      body.password,
+      userExist?.[0]?.password,
+    );
+
+    if (userExist.length < 1 && !passwordIsCorrect)
+      throw new UnauthorizedException('Credenciais inválidas');
+
+    const payload = {
+      userId: userExist?.[0]?.id,
+      email: userExist?.[0]?.email,
+    };
+
+    return { token: await this.jwtService.signAsync(payload) };
   }
 }
